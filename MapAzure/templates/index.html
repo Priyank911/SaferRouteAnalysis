@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Women Safety Map</title>
+    <script src="https://atlas.microsoft.com/sdk/javascript/mapcontrol/2/atlas.min.js"></script>
+    <link rel="stylesheet" href="https://atlas.microsoft.com/sdk/javascript/mapcontrol/2/atlas.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+<body>
+
+    <h3>Find the Safest Road for Women</h3>
+    <button id="findLocationBtn">Find My Location</button>
+    <div id="map" style="width: 100%; height: 500px;"></div>
+
+    <script>
+        let map, userMarker, dataSource;
+        
+        function initializeMap() {
+            map = new atlas.Map('map', {
+                center: [77.1025, 28.7041],
+                zoom: 13,
+                authOptions: {
+                    authType: 'subscriptionKey',
+                    subscriptionKey: 'EFfSwSvslsiSQ4NZuFLYN8BY5mc3KVgqCUV0yehE9uRJngU0PVpvJQQJ99AHACYeBjFmFs5tAAAgAZMP6Xlf'
+                }
+            });
+
+            
+            dataSource = new atlas.source.DataSource();
+            map.sources.add(dataSource);
+
+            const symbolLayer = new atlas.layer.SymbolLayer(dataSource, null, {
+                iconOptions: {
+                    image: 'pin-round-blue'
+                }
+            });
+            map.layers.add(symbolLayer);
+        }
+
+        function addSaferZoneMarkers(shops) {
+            dataSource.clear();
+            shops.forEach(shop => {
+                dataSource.add(new atlas.data.Feature(new atlas.data.Point([shop.lon, shop.lat]), {
+                    name: shop.name,
+                    category: shop.category
+                }));
+            });
+        }
+
+        document.getElementById('findLocationBtn').addEventListener('click', () => {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(sendLocation, handleLocationError);
+            } else {
+                alert("Geolocation is not supported by your browser.");
+            }
+        });
+
+        function sendLocation(position) {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+
+            map.setCamera({ center: [lon, lat], zoom: 15 });
+
+            if (userMarker) {
+                userMarker.setOptions({ position: [lon, lat] });
+            } else {
+                userMarker = new atlas.HtmlMarker({
+                    position: [lon, lat],
+                    text: 'You are here'
+                });
+                map.markers.add(userMarker);
+            }
+
+            axios.get('http://127.0.0.1:5000/shops_nearby', {
+                params: {
+                    lat: lat,
+                    lon: lon
+                }
+            })
+            .then(response => {
+                const data = response.data;
+                addSaferZoneMarkers(data.shops);
+                const circle = new atlas.Shape(new atlas.data.Polygon([[[
+                    [lon, lat],
+                    [lon + 0.03, lat],
+                    [lon, lat + 0.03],
+                    [lon - 0.03, lat],
+                    [lon, lat - 0.03],
+                    [lon, lat]
+                ]]]), {
+                    radius: 3000  
+                }).setOptions({
+                    fillColor: 'rgba(0, 0, 255, 0.3)',
+                    strokeColor: 'blue',
+                    strokeWidth: 2
+                });
+                map.shapes.add(circle);
+                
+                if (data.safe_zone) {
+                    alert("This area is considered a safe zone based on the nearby shops.");
+                } else {
+                    alert("This area might not be safe.");
+                }
+            })
+            .catch(error => {
+                console.error(error);
+                alert("An error occurred while fetching nearby shops.");
+            });
+        }
+
+        function handleLocationError(error) {
+            switch (error.code) {
+                case error.PERMISSION_DENIED:
+                    alert("User denied the request for Geolocation.");
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    alert("Location information is unavailable.");
+                    break;
+                case error.TIMEOUT:
+                    alert("The request to get user location timed out.");
+                    break;
+                case error.UNKNOWN_ERROR:
+                    alert("An unknown error occurred.");
+                    break;
+            }
+        }
+
+        initializeMap();
+    </script>
+</body>
+</html>
